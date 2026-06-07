@@ -3,10 +3,17 @@
     class="node"
     :class="{ selected }"
     :transform="`translate(${node.position.x}, ${node.position.y})`"
-    @click.stop="$emit('select', $event)"
-    @mousedown.stop="$emit('mousedown', $event)"
-    @dblclick.stop="$emit('dblclick')"
   >
+    <rect
+      :width="node.size.width"
+      :height="node.size.height"
+      fill="transparent"
+      stroke="transparent"
+      class="hit-area"
+      @click.stop="$emit('select', $event)"
+      @mousedown.stop="$emit('mousedown', $event)"
+      @dblclick.stop="$emit('dblclick')"
+    />
     <rect
       v-if="shape === 'rectangle' || shape === 'rounded-rectangle'"
       :width="node.size.width"
@@ -16,6 +23,7 @@
       :fill="node.style.fillColor"
       :stroke="selected ? '#2196f3' : node.style.strokeColor"
       :stroke-width="selected ? 3 : node.style.strokeWidth"
+      pointer-events="none"
     />
     
     <ellipse
@@ -27,6 +35,7 @@
       :fill="node.style.fillColor"
       :stroke="selected ? '#2196f3' : node.style.strokeColor"
       :stroke-width="selected ? 3 : node.style.strokeWidth"
+      pointer-events="none"
     />
     
     <polygon
@@ -35,6 +44,7 @@
       :fill="node.style.fillColor"
       :stroke="selected ? '#2196f3' : node.style.strokeColor"
       :stroke-width="selected ? 3 : node.style.strokeWidth"
+      pointer-events="none"
     />
     
     <polygon
@@ -43,6 +53,7 @@
       :fill="node.style.fillColor"
       :stroke="selected ? '#2196f3' : node.style.strokeColor"
       :stroke-width="selected ? 3 : node.style.strokeWidth"
+      pointer-events="none"
     />
     
     <text

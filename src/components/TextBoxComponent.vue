@@ -3,10 +3,17 @@
     class="textbox"
     :class="{ selected }"
     :transform="`translate(${textBox.position.x}, ${textBox.position.y})`"
-    @click.stop="$emit('select', $event)"
-    @mousedown.stop="$emit('mousedown', $event)"
-    @dblclick.stop="$emit('dblclick')"
   >
+    <rect
+      :width="150"
+      :height="30"
+      fill="transparent"
+      stroke="transparent"
+      class="hit-area"
+      @click.stop="$emit('select', $event)"
+      @mousedown.stop="$emit('mousedown', $event)"
+      @dblclick.stop="$emit('dblclick')"
+    />
     <rect
       :width="150"
       :height="30"
@@ -14,6 +21,7 @@
       :stroke="selected ? '#2196f3' : 'transparent'"
       :stroke-width="selected ? 2 : 0"
       stroke-dasharray="4,2"
+      pointer-events="none"
     />
     <text
       x="5"

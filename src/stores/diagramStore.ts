@@ -282,9 +282,13 @@ export const useDiagramStore = defineStore('diagram', () => {
     if (saveHistory) saveToHistory()
     const element = currentDiagram.value.elements.find(el => el.id === id)
     if (element) {
-      Object.assign(element, updates)
-      if (updates.style) {
-        element.style = { ...element.style, ...updates.style }
+      const oldStyle = { ...(element.style as object) }
+      
+      const { style, ...otherUpdates } = updates
+      Object.assign(element, otherUpdates)
+      
+      if (style) {
+        element.style = { ...oldStyle, ...style } as any
       }
       
       if (element.type === 'node' && element.text && updates.text) {
