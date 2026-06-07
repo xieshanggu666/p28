@@ -33,6 +33,16 @@
       <div 
         class="element-item" 
         draggable="true"
+        @dragstart="handleDragStart($event, 'flow-topic')"
+      >
+        <div class="element-preview flow-topic">
+          <span>主题</span>
+        </div>
+        <span class="element-label">主题节点</span>
+      </div>
+      <div 
+        class="element-item" 
+        draggable="true"
         @dragstart="handleDragStart($event, 'flow-start')"
       >
         <div class="element-preview flow-start">
@@ -83,6 +93,22 @@
     </div>
     
     <div class="sidebar-section">
+      <h4>快速操作</h4>
+      <button class="action-btn" @click="$emit('auto-layout')">
+        <span>📐</span> 自动布局
+      </button>
+      <button class="action-btn" @click="$emit('number-edges')">
+        <span>🔢</span> 自动编号
+      </button>
+      <button class="action-btn" @click="$emit('expand-all')">
+        <span>📂</span> 展开全部
+      </button>
+      <button class="action-btn" @click="$emit('collapse-all')">
+        <span>📁</span> 折叠全部
+      </button>
+    </div>
+    
+    <div class="sidebar-section">
       <h4>其他</h4>
       <div 
         class="element-item" 
@@ -111,6 +137,10 @@
 <script setup lang="ts">
 const emit = defineEmits<{
   (e: 'drag-start', type: string): void
+  (e: 'auto-layout'): void
+  (e: 'number-edges'): void
+  (e: 'expand-all'): void
+  (e: 'collapse-all'): void
 }>()
 
 function handleDragStart(event: DragEvent, type: string) {
@@ -197,6 +227,14 @@ function handleDragStart(event: DragEvent, type: string) {
   border-radius: 6px;
 }
 
+.flow-topic {
+  background: #e3f2fd;
+  border: 3px solid #1976d2;
+  border-radius: 18px;
+  font-weight: bold;
+  box-shadow: 0 2px 4px rgba(25, 118, 210, 0.2);
+}
+
 .flow-start,
 .flow-end {
   background: #fff3e0;
@@ -272,6 +310,35 @@ function handleDragStart(event: DragEvent, type: string) {
   position: absolute;
   left: 0;
   color: #ccc;
+}
+
+.action-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 10px 12px;
+  margin-bottom: 8px;
+  border: 1px solid #e0e0e0;
+  border-radius: 6px;
+  background: #fafafa;
+  font-size: 13px;
+  color: #333;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.action-btn:hover {
+  background: #f0f0f0;
+  border-color: #ccc;
+}
+
+.action-btn:active {
+  background: #e8e8e8;
+}
+
+.action-btn span {
+  font-size: 16px;
 }
 
 @media (max-width: 768px) {

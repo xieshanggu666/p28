@@ -57,7 +57,12 @@ export interface FlowchartNode {
   position: Position
   size: Size
   style: NodeStyle
-  nodeType: 'process' | 'decision' | 'start' | 'end' | 'input' | 'output'
+  nodeType: 'process' | 'decision' | 'start' | 'end' | 'input' | 'output' | 'topic'
+  parentId: string | null
+  children: string[]
+  level: number
+  collapsed: boolean
+  isRoot: boolean
 }
 
 export type DiagramNode = MindMapNode | FlowchartNode
@@ -72,6 +77,10 @@ export interface Edge {
   points: Position[]
   style: EdgeStyle
   text?: string
+  label?: string
+  number?: string
+  labelPosition?: 'above' | 'below' | 'center'
+  pathType?: 'straight' | 'bezier' | 'orthogonal'
 }
 
 export interface TextBox {
@@ -158,3 +167,14 @@ export const defaultCanvasState: CanvasState = {
   gridVisible: true,
   gridSize: 20
 }
+
+export const layoutConfig = {
+  horizontalSpacing: 80,
+  verticalSpacing: 60,
+  nodeWidth: 140,
+  nodeHeight: 50,
+  topicNodeWidth: 180,
+  topicNodeHeight: 60
+}
+
+export const defaultEdgePathType = 'bezier' as const

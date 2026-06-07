@@ -20,8 +20,11 @@ import {
   defaultNodeStyle,
   defaultEdgeStyle,
   defaultTextBoxStyle,
-  defaultCanvasState
+  defaultCanvasState,
+  layoutConfig,
+  defaultEdgePathType
 } from '@/types'
+import { hierarchicalLayout, simpleTreeLayout, getDescendantIds, findRootNodes } from '@/utils/layout'
 
 const STORAGE_KEY = 'mindmap-flowchart-data'
 const AUTO_SAVE_INTERVAL = 5000
@@ -139,13 +142,27 @@ export const useDiagramStore = defineStore('diagram', () => {
     text: string,
     position: Position,
     nodeType: FlowchartNode['nodeType'] = 'process',
+    parentId: string | null = null,
     style?: Partial<NodeStyle>
   ): FlowchartNode {
-    const size = calculateTextSize(text, { ...defaultNodeStyle, ...style })
+    const nodes = currentDiagram.value?.elements.filter(el => el.type === 'node') as DiagramNode[] || []
+    let level = 0
+    let isRoot = !parentId
     
-    let shape = style?.shape || 'rounded-rectangle'
+    if (parentId) {
+      const parent = nodes.find(n => n.id === parentId) as FlowchartNode | MindMapNode | undefined
+      if (parent && 'level' in parent) {
+        level = parent.level + 1
+        isRoot = false
+      }
+    }
+
+    const baseStyle = { ...defaultNodeStyle, ...style }
+    const size = calculateTextSize(text, baseStyle)
+    
+    let shape = baseStyle.shape || 'rounded-rectangle'
     if (nodeType === 'decision') shape = 'diamond'
-    else if (nodeType === 'start' || nodeType === 'end') shape = 'ellipse'
+    else if (nodeType === 'start' || nodeType === 'end' || nodeType === 'topic') shape = 'ellipse'
     
     return {
       id: uuidv4(),
@@ -153,8 +170,13 @@ export const useDiagramStore = defineStore('diagram', () => {
       text,
       position,
       size,
-      style: { ...defaultNodeStyle, shape, ...style },
-      nodeType
+      style: { ...baseStyle, shape },
+      nodeType,
+      parentId,
+      children: [],
+      level,
+      collapsed: false,
+      isRoot
     }
   }
 
@@ -192,7 +214,14 @@ export const useDiagramStore = defineStore('diagram', () => {
   function createEdge(
     sourceId: string,
     targetId: string,
-    style?: Partial<EdgeStyle>
+    style?: Partial<EdgeStyle>,
+    options?: {
+      text?: string
+      label?: string
+      number?: string
+      labelPosition?: 'above' | 'below' | 'center'
+      pathType?: 'straight' | 'bezier' | 'orthogonal'
+    }
   ): Edge | null {
     if (!currentDiagram.value) return null
     
@@ -209,7 +238,12 @@ export const useDiagramStore = defineStore('diagram', () => {
       sourceId,
       targetId,
       points,
-      style: { ...defaultEdgeStyle, ...style }
+      style: { ...defaultEdgeStyle, ...style },
+      text: options?.text,
+      label: options?.label,
+      number: options?.number,
+      labelPosition: options?.labelPosition || 'above',
+      pathType: options?.pathType || defaultEdgePathType
     }
   }
 
@@ -255,6 +289,218 @@ export const useDiagramStore = defineStore('diagram', () => {
     if (!currentDiagram.value) return
     saveToHistory()
     currentDiagram.value.elements.push(edge)
+    currentDiagram.value.updatedAt = Date.now()
+    autoSave()
+  }
+
+  function addChildNode(
+    parentId: string,
+    text: string = '子节点',
+    nodeType: FlowchartNode['nodeType'] = 'process',
+    style?: Partial<NodeStyle>
+  ): FlowchartNode | null {
+    if (!currentDiagram.value) return null
+    
+    const parent = nodes.value.find(n => n.id === parentId)
+    if (!parent) return null
+
+    const position = {
+      x: parent.position.x + layoutConfig.horizontalSpacing + parent.size.width,
+      y: parent.position.y
+    }
+
+    const childNode = createFlowchartNode(text, position, nodeType, parentId, style)
+    
+    saveToHistory()
+    currentDiagram.value.elements.push(childNode)
+
+    if ('children' in parent) {
+      (parent as FlowchartNode).children.push(childNode.id)
+    }
+
+    const edge = createEdge(parentId, childNode.id, undefined, {
+      pathType: 'bezier'
+    })
+    if (edge) {
+      currentDiagram.value.elements.push(edge)
+    }
+
+    currentDiagram.value.updatedAt = Date.now()
+    autoSave()
+    
+    return childNode
+  }
+
+  function addTopicNode(
+    text: string = '中心主题',
+    position: Position = { x: 400, y: 300 },
+    style?: Partial<NodeStyle>
+  ): FlowchartNode | null {
+    if (!currentDiagram.value) return null
+
+    const topicStyle = {
+      fillColor: '#e3f2fd',
+      fontWeight: 'bold' as const,
+      fontSize: 16,
+      ...style
+    }
+
+    const topicNode = createFlowchartNode(text, position, 'topic', null, topicStyle)
+    
+    saveToHistory()
+    currentDiagram.value.elements.push(topicNode)
+    currentDiagram.value.updatedAt = Date.now()
+    autoSave()
+    
+    return topicNode
+  }
+
+  function deleteSubtree(nodeId: string) {
+    if (!currentDiagram.value) return
+    
+    const descendantIds = getDescendantIds(nodeId, nodes.value)
+    const allIds = [nodeId, ...descendantIds]
+    
+    deleteElements(allIds)
+  }
+
+  function toggleCollapse(nodeId: string) {
+    if (!currentDiagram.value) return
+    
+    const node = nodes.value.find(n => n.id === nodeId)
+    if (node && 'collapsed' in node) {
+      saveToHistory()
+      ;(node as any).collapsed = !(node as any).collapsed
+      currentDiagram.value.updatedAt = Date.now()
+      autoSave()
+    }
+  }
+
+  function expandAll(nodeId?: string) {
+    if (!currentDiagram.value) return
+    saveToHistory()
+    
+    const targetNodes = nodeId 
+      ? [nodeId, ...getDescendantIds(nodeId, nodes.value)]
+      : nodes.value.map(n => n.id)
+    
+    targetNodes.forEach(id => {
+      const node = nodes.value.find(n => n.id === id)
+      if (node && 'collapsed' in node) {
+        (node as any).collapsed = false
+      }
+    })
+    
+    currentDiagram.value.updatedAt = Date.now()
+    autoSave()
+  }
+
+  function collapseAll(nodeId?: string) {
+    if (!currentDiagram.value) return
+    saveToHistory()
+    
+    const targetNodes = nodeId 
+      ? [nodeId, ...getDescendantIds(nodeId, nodes.value)]
+      : nodes.value.map(n => n.id)
+    
+    targetNodes.forEach(id => {
+      const node = nodes.value.find(n => n.id === id)
+      if (node && 'collapsed' in node && 'children' in node && (node as any).children.length > 0) {
+        (node as any).collapsed = true
+      }
+    })
+    
+    currentDiagram.value.updatedAt = Date.now()
+    autoSave()
+  }
+
+  function autoLayout(rootNodeId?: string) {
+    if (!currentDiagram.value || nodes.value.length === 0) return
+    
+    saveToHistory()
+    
+    let rootId = rootNodeId
+    if (!rootId) {
+      const roots = findRootNodes(nodes.value)
+      if (roots.length === 0) return
+      rootId = roots[0]
+    }
+
+    const positions = hierarchicalLayout(nodes.value, rootId, {
+      horizontalSpacing: layoutConfig.horizontalSpacing,
+      verticalSpacing: layoutConfig.verticalSpacing
+    })
+
+    positions.forEach((position, nodeId) => {
+      const element = currentDiagram.value!.elements.find(el => el.id === nodeId)
+      if (element && element.type === 'node') {
+        (element as DiagramNode).position = position
+      }
+    })
+
+    edges.value.forEach(edge => {
+      const source = nodes.value.find(n => n.id === edge.sourceId)
+      const target = nodes.value.find(n => n.id === edge.targetId)
+      if (source && target) {
+        edge.points = calculateEdgePoints(source, target)
+      }
+    })
+
+    currentDiagram.value.updatedAt = Date.now()
+    autoSave()
+  }
+
+  function setEdgeLabel(edgeId: string, label: string) {
+    updateElement(edgeId, { label } as any)
+  }
+
+  function setEdgeNumber(edgeId: string, number: string) {
+    updateElement(edgeId, { number } as any)
+  }
+
+  function setEdgePathType(edgeId: string, pathType: 'straight' | 'bezier' | 'orthogonal') {
+    updateElement(edgeId, { pathType } as any)
+  }
+
+  function numberEdgesFromRoot(rootNodeId?: string) {
+    if (!currentDiagram.value) return
+    saveToHistory()
+    
+    let rootId = rootNodeId
+    if (!rootId) {
+      const roots = findRootNodes(nodes.value)
+      if (roots.length === 0) return
+      rootId = roots[0]
+    }
+
+    const edgeNumberMap = new Map<string, string>()
+    let edgeCounter = 1
+
+    function traverse(nodeId: string, prefix: string = '') {
+      const node = nodes.value.find(n => n.id === nodeId)
+      if (!node || !('children' in node)) return
+
+      const children = (node as any).children as string[]
+      children.forEach((childId, index) => {
+        const edge = edges.value.find(e => e.sourceId === nodeId && e.targetId === childId)
+        if (edge) {
+          const number = prefix ? `${prefix}.${index + 1}` : `${index + 1}`
+          edgeNumberMap.set(edge.id, number)
+          edgeCounter++
+        }
+        traverse(childId, prefix ? `${prefix}.${index + 1}` : `${index + 1}`)
+      })
+    }
+
+    traverse(rootId)
+
+    edgeNumberMap.forEach((number, edgeId) => {
+      const edge = currentDiagram.value!.elements.find(el => el.id === edgeId) as Edge | undefined
+      if (edge) {
+        edge.number = number
+      }
+    })
+
     currentDiagram.value.updatedAt = Date.now()
     autoSave()
   }
@@ -478,6 +724,17 @@ export const useDiagramStore = defineStore('diagram', () => {
     addNode,
     createEdge,
     addEdge,
+    addChildNode,
+    addTopicNode,
+    deleteSubtree,
+    toggleCollapse,
+    expandAll,
+    collapseAll,
+    autoLayout,
+    setEdgeLabel,
+    setEdgeNumber,
+    setEdgePathType,
+    numberEdgesFromRoot,
     createTextBox,
     addTextBox,
     updateElement,

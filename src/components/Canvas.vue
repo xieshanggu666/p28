@@ -27,6 +27,61 @@
         >
           <path d="M 0 0 L 10 5 L 0 10 z" fill="#666666" />
         </marker>
+        <marker
+          id="arrow-start"
+          viewBox="0 0 10 10"
+          refX="1"
+          refY="5"
+          markerWidth="6"
+          markerHeight="6"
+          orient="auto-start-reverse"
+        >
+          <path d="M 10 0 L 0 5 L 10 10 z" fill="#666666" />
+        </marker>
+        <marker
+          id="diamond-end"
+          viewBox="0 0 10 10"
+          refX="9"
+          refY="5"
+          markerWidth="8"
+          markerHeight="8"
+          orient="auto-start-reverse"
+        >
+          <polygon points="0,5 5,0 10,5 5,10" fill="#666666" />
+        </marker>
+        <marker
+          id="diamond-start"
+          viewBox="0 0 10 10"
+          refX="1"
+          refY="5"
+          markerWidth="8"
+          markerHeight="8"
+          orient="auto-start-reverse"
+        >
+          <polygon points="0,5 5,0 10,5 5,10" fill="#666666" />
+        </marker>
+        <marker
+          id="circle-end"
+          viewBox="0 0 10 10"
+          refX="5"
+          refY="5"
+          markerWidth="8"
+          markerHeight="8"
+          orient="auto-start-reverse"
+        >
+          <circle cx="5" cy="5" r="4" fill="#666666" />
+        </marker>
+        <marker
+          id="circle-start"
+          viewBox="0 0 10 10"
+          refX="5"
+          refY="5"
+          markerWidth="8"
+          markerHeight="8"
+          orient="auto-start-reverse"
+        >
+          <circle cx="5" cy="5" r="4" fill="#666666" />
+        </marker>
         <pattern
           id="grid"
           :width="gridSize"
@@ -81,6 +136,8 @@
           @mousedown="startDrag(node, $event)"
           @dblclick="startEdit(node)"
           @start-connect="startConnect(node)"
+          @add-child="handleAddChild(node)"
+          @contextmenu="handleNodeContextMenu(node, $event)"
         />
       </g>
       
@@ -327,6 +384,10 @@ function handleDrop(event: DragEvent) {
       }
       break
     }
+    case 'flow-topic': {
+      diagramStore.addTopicNode('中心主题', position)
+      break
+    }
     case 'flow-start': {
       const node = diagramStore.createFlowchartNode('开始', position, 'start')
       node.style.fillColor = '#e8f5e9'
@@ -429,6 +490,87 @@ function startConnect(node: DiagramNode) {
     sourceId: node.id,
     tempPoints: [centerPoint, centerPoint]
   }
+}
+
+function handleAddChild(node: DiagramNode) {
+  const nodeType = 'nodeType' in node ? (node as any).nodeType : 'process'
+  const childType = nodeType === 'topic' || nodeType === 'start' ? 'process' : nodeType
+  diagramStore.addChildNode(node.id, '子节点', childType)
+}
+
+function handleNodeContextMenu(node: DiagramNode, event: MouseEvent) {
+  event.preventDefault()
+  showNodeContextMenu(node, event)
+}
+
+function showNodeContextMenu(node: DiagramNode, event: MouseEvent) {
+  const menuItems = [
+    { label: '添加子节点', action: () => diagramStore.addChildNode(node.id) },
+    { label: '删除节点', action: () => diagramStore.deleteElements([node.id]) },
+    { label: '删除子树', action: () => diagramStore.deleteSubtree(node.id) },
+    { type: 'separator' },
+    { label: '展开全部', action: () => diagramStore.expandAll(node.id) },
+    { label: '折叠全部', action: () => diagramStore.collapseAll(node.id) },
+    { type: 'separator' },
+    { label: '自动布局', action: () => diagramStore.autoLayout() },
+    { label: '自动编号连接线', action: () => diagramStore.numberEdgesFromRoot() }
+  ]
+  
+  const menu = document.createElement('div')
+  menu.className = 'context-menu'
+  menu.style.position = 'fixed'
+  menu.style.left = `${event.clientX}px`
+  menu.style.top = `${event.clientY}px`
+  menu.style.zIndex = '1000'
+  menu.style.background = 'white'
+  menu.style.border = '1px solid #ddd'
+  menu.style.borderRadius = '4px'
+  menu.style.boxShadow = '0 2px 8px rgba(0,0,0,0.15)'
+  menu.style.padding = '4px 0'
+  menu.style.minWidth = '160px'
+  
+  menuItems.forEach(item => {
+    if (item.type === 'separator') {
+      const sep = document.createElement('div')
+      sep.style.height = '1px'
+      sep.style.background = '#eee'
+      sep.style.margin = '4px 0'
+      menu.appendChild(sep)
+    } else {
+      const menuItem = document.createElement('div')
+      menuItem.textContent = item.label
+      menuItem.style.padding = '8px 16px'
+      menuItem.style.cursor = 'pointer'
+      menuItem.style.fontSize = '13px'
+      menuItem.style.color = '#333'
+      menuItem.addEventListener('mouseenter', () => {
+        menuItem.style.background = '#f5f5f5'
+      })
+      menuItem.addEventListener('mouseleave', () => {
+        menuItem.style.background = 'transparent'
+      })
+      menuItem.addEventListener('click', () => {
+        item.action()
+        document.body.removeChild(menu)
+      })
+      menu.appendChild(menuItem)
+    }
+  })
+  
+  document.body.appendChild(menu)
+  
+  const closeMenu = () => {
+    if (document.body.contains(menu)) {
+      document.body.removeChild(menu)
+    }
+    document.removeEventListener('click', closeMenu)
+    document.removeEventListener('contextmenu', closeMenu)
+  }
+  
+  setTimeout(() => {
+    document.addEventListener('click', closeMenu)
+    document.addEventListener('contextmenu', closeMenu)
+  }, 0)
 }
 
 function findNodeAtPosition(pos: Position): DiagramNode | null {

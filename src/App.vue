@@ -2,7 +2,12 @@
   <div class="app-container">
     <Toolbar />
     <div class="main-content">
-      <Sidebar />
+      <Sidebar 
+        @auto-layout="diagramStore.autoLayout()"
+        @number-edges="diagramStore.numberEdgesFromRoot()"
+        @expand-all="diagramStore.expandAll()"
+        @collapse-all="diagramStore.collapseAll()"
+      />
       <Canvas />
       <StylePanel />
     </div>
