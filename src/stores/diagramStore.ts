@@ -293,6 +293,76 @@ export const useDiagramStore = defineStore('diagram', () => {
     autoSave()
   }
 
+  function calculateChildPosition(
+    parent: DiagramNode,
+    childIndex: number,
+    childSize: { width: number; height: number }
+  ): Position {
+    const parentChildren = 'children' in parent ? (parent as any).children as string[] : []
+    const existingChildren = parentChildren
+      .map(id => nodes.value.find(n => n.id === id))
+      .filter((n): n is DiagramNode => !!n)
+
+    let baseY = parent.position.y + parent.size.height / 2 - childSize.height / 2
+    
+    if (existingChildren.length > 0) {
+      const sortedChildren = [...existingChildren].sort((a, b) => a.position.y - b.position.y)
+      const lastChild = sortedChildren[sortedChildren.length - 1]
+      baseY = lastChild.position.y + lastChild.size.height + layoutConfig.verticalSpacing
+    }
+
+    const baseX = parent.position.x + parent.size.width + layoutConfig.horizontalSpacing
+
+    const position = {
+      x: baseX,
+      y: baseY
+    }
+
+    return clampPositionToViewport(position, childSize)
+  }
+
+  function clampPositionToViewport(
+    position: Position,
+    size: { width: number; height: number }
+  ): Position {
+    const viewport = getViewportBounds()
+    const margin = 50
+
+    let x = position.x
+    let y = position.y
+
+    if (x + size.width > viewport.maxX - margin) {
+      x = viewport.maxX - size.width - margin
+    }
+    if (x < viewport.minX + margin) {
+      x = viewport.minX + margin
+    }
+    if (y + size.height > viewport.maxY - margin) {
+      y = viewport.maxY - size.height - margin
+    }
+    if (y < viewport.minY + margin) {
+      y = viewport.minY + margin
+    }
+
+    return { x, y }
+  }
+
+  function getViewportBounds() {
+    const canvasState = canvasState
+    const zoom = canvasState.value.zoom
+    const pan = canvasState.value.pan
+    
+    const viewportWidth = typeof window !== 'undefined' ? window.innerWidth : 1200
+    const viewportHeight = typeof window !== 'undefined' ? window.innerHeight : 800
+    
+    const minX = -pan.x / zoom
+    const minY = -pan.y / zoom
+    const maxX = minX + viewportWidth / zoom
+    const maxY = minY + viewportHeight / zoom
+    
+    return { minX, minY, maxX, maxY }
+  }
+
   function addChildNode(
     parentId: string,
     text: string = '子节点',
@@ -304,10 +374,11 @@ export const useDiagramStore = defineStore('diagram', () => {
     const parent = nodes.value.find(n => n.id === parentId)
     if (!parent) return null
 
-    const position = {
-      x: parent.position.x + layoutConfig.horizontalSpacing + parent.size.width,
-      y: parent.position.y
-    }
+    const childIndex = 'children' in parent ? (parent as any).children.length : 0
+    const tempStyle = { ...defaultNodeStyle, ...style }
+    const childSize = calculateTextSize(text, tempStyle)
+    
+    const position = calculateChildPosition(parent, childIndex, childSize)
 
     const childNode = createFlowchartNode(text, position, nodeType, parentId, style)
     
@@ -735,6 +806,9 @@ export const useDiagramStore = defineStore('diagram', () => {
     setEdgeNumber,
     setEdgePathType,
     numberEdgesFromRoot,
+    calculateChildPosition,
+    clampPositionToViewport,
+    getViewportBounds,
     createTextBox,
     addTextBox,
     updateElement,

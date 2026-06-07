@@ -306,10 +306,12 @@ function handleMouseMove(event: MouseEvent) {
     const dx = mousePos.x - dragStartPos.value.x
     const dy = mousePos.y - dragStartPos.value.y
     
-    const newPosition = {
+    let newPosition = {
       x: Math.round((elementStartPos.value.x + dx) / gridSize.value) * gridSize.value,
       y: Math.round((elementStartPos.value.y + dy) / gridSize.value) * gridSize.value
     }
+    
+    newPosition = clampElementPosition(newPosition, draggingElement.value)
     
     if (newPosition.x !== lastDragPosition.value.x || newPosition.y !== lastDragPosition.value.y) {
       hasDragged.value = true
@@ -362,7 +364,10 @@ function handleDrop(event: DragEvent) {
   const elementType = event.dataTransfer?.getData('elementType')
   if (!elementType) return
   
-  const position = getMousePosition(event)
+  let position = getMousePosition(event)
+  
+  const tempNodeSize = { width: 140, height: 50 }
+  position = diagramStore.clampPositionToViewport(position, tempNodeSize)
   
   switch (elementType) {
     case 'mindmap-node': {
@@ -571,6 +576,34 @@ function showNodeContextMenu(node: DiagramNode, event: MouseEvent) {
     document.addEventListener('click', closeMenu)
     document.addEventListener('contextmenu', closeMenu)
   }, 0)
+}
+
+function clampElementPosition(
+  position: Position,
+  element: DiagramNode | TextBoxType
+): Position {
+  const bounds = diagramStore.getViewportBounds()
+  const margin = 30
+  const elementWidth = 'size' in element ? element.size.width : 150
+  const elementHeight = 'size' in element ? element.size.height : 30
+
+  let x = position.x
+  let y = position.y
+
+  if (x + elementWidth > bounds.maxX - margin) {
+    x = bounds.maxX - elementWidth - margin
+  }
+  if (x < bounds.minX + margin) {
+    x = bounds.minX + margin
+  }
+  if (y + elementHeight > bounds.maxY - margin) {
+    y = bounds.maxY - elementHeight - margin
+  }
+  if (y < bounds.minY + margin) {
+    y = bounds.minY + margin
+  }
+
+  return { x, y }
 }
 
 function findNodeAtPosition(pos: Position): DiagramNode | null {

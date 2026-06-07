@@ -3,6 +3,8 @@
     class="node"
     :class="{ selected, 'is-topic': isTopic, 'is-root': isRoot }"
     :transform="`translate(${node.position.x}, ${node.position.y})`"
+    @mouseenter="handleMouseEnter"
+    @mouseleave="handleMouseLeave"
   >
     <rect
       :width="node.size.width"
@@ -133,73 +135,75 @@
       </text>
     </g>
     
-    <circle
-      v-if="selected"
-      :cx="node.size.width"
-      :cy="node.size.height / 2"
-      r="6"
-      fill="#2196f3"
-      stroke="white"
-      stroke-width="2"
-      class="connect-handle"
-      @mouseenter="showConnectTip = true"
-      @mouseleave="showConnectTip = false"
-      @mousedown.stop="$emit('start-connect')"
-    />
-    
-    <circle
-      v-if="hasChildren && 'collapsed' in node"
-      :cx="node.size.width + 16"
-      :cy="node.size.height / 2"
-      r="10"
-      fill="#fff"
-      stroke="#999"
-      stroke-width="1"
-      class="collapse-handle"
-      @click.stop="toggleCollapse"
-    />
-    <text
-      v-if="hasChildren && 'collapsed' in node"
-      :x="node.size.width + 16"
-      :y="node.size.height / 2"
-      text-anchor="middle"
-      dominant-baseline="middle"
-      :font-size="14"
-      fill="#666"
-      pointer-events="none"
-    >
-      {{ node.collapsed ? '+' : '−' }}
-    </text>
-    
-    <circle
-      v-if="selected"
-      :cx="node.size.width + 40"
-      :cy="node.size.height / 2"
-      r="10"
-      fill="#4caf50"
-      stroke="white"
-      stroke-width="2"
-      class="add-child-handle"
-      @click.stop="$emit('add-child')"
-    />
-    <text
-      v-if="selected"
-      :x="node.size.width + 40"
-      :y="node.size.height / 2"
-      text-anchor="middle"
-      dominant-baseline="middle"
-      font-size="14"
-      fill="white"
-      font-weight="bold"
-      pointer-events="none"
-    >
-      +
-    </text>
+    <g class="action-buttons" :class="{ 'is-visible': showActionButtons }">
+      <g class="action-btn-group connect-btn" @mousedown.stop="$emit('start-connect')">
+        <circle
+          :cx="node.size.width + 4"
+          :cy="node.size.height / 2"
+          :r="connectHandleRadius"
+          :fill="connectHandleFill"
+          stroke="white"
+          stroke-width="2"
+          class="handle-circle"
+        />
+      </g>
+      
+      <g 
+        v-if="hasChildren && 'collapsed' in node" 
+        class="action-btn-group collapse-btn"
+        @click.stop="toggleCollapse"
+      >
+        <circle
+          :cx="node.size.width + 28"
+          :cy="node.size.height / 2"
+          r="10"
+          fill="#fff"
+          stroke="#999"
+          stroke-width="1"
+          class="handle-circle"
+        />
+        <text
+          :x="node.size.width + 28"
+          :y="node.size.height / 2"
+          text-anchor="middle"
+          dominant-baseline="middle"
+          :font-size="14"
+          fill="#666"
+          pointer-events="none"
+        >
+          {{ node.collapsed ? '+' : '−' }}
+        </text>
+      </g>
+      
+      <g class="action-btn-group add-child-btn" @click.stop="$emit('add-child')">
+        <circle
+          :cx="node.size.width + 52"
+          :cy="node.size.height / 2"
+          r="10"
+          fill="#4caf50"
+          stroke="white"
+          stroke-width="2"
+          class="handle-circle"
+        />
+        <text
+          :x="node.size.width + 52"
+          :y="node.size.height / 2"
+          text-anchor="middle"
+          dominant-baseline="middle"
+          font-size="14"
+          fill="white"
+          font-weight="bold"
+          pointer-events="none"
+        >
+          +
+        </text>
+      </g>
+    </g>
   </g>
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, ref, onMounted, onUnmounted } from 'vue'
 import type { DiagramNode } from '@/types'
 import { useDiagramStore } from '@/stores/diagramStore'
 
@@ -218,7 +222,8 @@ const emit = defineEmits<{
 }>()
 
 const diagramStore = useDiagramStore()
-const showConnectTip = ref(false)
+const isHovered = ref(false)
+const isConnectHovered = ref(false)
 
 const levelColors = ['#1976d2', '#388e3c', '#f57c00', '#c2185b', '#7b1fa2', '#00796b']
 
@@ -253,6 +258,18 @@ const childrenCount = computed(() => {
   return 0
 })
 
+const showActionButtons = computed(() => {
+  return props.selected || isHovered.value
+})
+
+const connectHandleRadius = computed(() => {
+  return isConnectHovered.value ? 8 : 6
+})
+
+const connectHandleFill = computed(() => {
+  return isConnectHovered.value ? '#1976d2' : '#2196f3'
+})
+
 const diamondPoints = computed(() => {
   const w = props.node.size.width
   const h = props.node.size.height
@@ -266,6 +283,23 @@ const parallelogramPoints = computed(() => {
   return `${offset},0 ${w},0 ${w-offset},${h} 0,${h}`
 })
 
+function handleMouseEnter() {
+  isHovered.value = true
+}
+
+function handleMouseLeave() {
+  isHovered.value = false
+  isConnectHovered.value = false
+}
+
+function handleConnectEnter() {
+  isConnectHovered.value = true
+}
+
+function handleConnectLeave() {
+  isConnectHovered.value = false
+}
+
 function toggleCollapse(event: MouseEvent) {
   event.stopPropagation()
   if ('collapsed' in props.node) {
@@ -276,7 +310,13 @@ function toggleCollapse(event: MouseEvent) {
 
 <style scoped>
 .node {
-  transition: stroke 0.2s;
+  transition: stroke 0.2s ease;
+}
+
+.node :deep(rect),
+.node :deep(ellipse),
+.node :deep(polygon) {
+  transition: filter 0.2s ease;
 }
 
 .node:hover :deep(rect),
@@ -299,44 +339,43 @@ function toggleCollapse(event: MouseEvent) {
   filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.2));
 }
 
-.connect-handle {
-  cursor: crosshair;
+.action-buttons {
   opacity: 0;
-  transition: opacity 0.2s;
+  visibility: hidden;
+  transition: opacity 0.25s ease, visibility 0.25s ease;
+  pointer-events: none;
 }
 
-.node:hover .connect-handle,
-.selected .connect-handle {
+.action-buttons.is-visible {
   opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
 }
 
-.connect-handle:hover {
-  fill: #1976d2;
-  r: 8;
-}
-
-.collapse-handle {
+.action-btn-group {
   cursor: pointer;
+  transition: transform 0.15s ease;
 }
 
-.collapse-handle:hover {
+.action-btn-group:hover {
+  transform: scale(1.05);
+}
+
+.action-btn-group .handle-circle {
+  transition: fill 0.15s ease, stroke 0.15s ease, r 0.15s ease;
+}
+
+.connect-btn:hover .handle-circle {
+  fill: #1976d2 !important;
+}
+
+.collapse-btn:hover .handle-circle {
   stroke: #2196f3;
   stroke-width: 2;
 }
 
-.add-child-handle {
-  cursor: pointer;
-  opacity: 0;
-  transition: opacity 0.2s, transform 0.1s;
-}
-
-.selected .add-child-handle {
-  opacity: 1;
-}
-
-.add-child-handle:hover {
+.add-child-btn:hover .handle-circle {
   fill: #388e3c;
-  transform: scale(1.1);
 }
 
 .children-count {
