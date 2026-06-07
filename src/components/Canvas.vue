@@ -359,7 +359,16 @@ function handleMouseUp(event: MouseEvent) {
 function handleWheel(event: WheelEvent) {
   event.preventDefault()
   const delta = event.deltaY > 0 ? -0.1 : 0.1
-  diagramStore.setZoom(canvasState.value.zoom + delta)
+  const mousePos = getMousePosition(event)
+  diagramStore.setZoom(canvasState.value.zoom + delta, mousePos)
+}
+
+function getCanvasContainerSize() {
+  if (!canvasContainerRef.value) {
+    return { width: 1200, height: 800 }
+  }
+  const rect = canvasContainerRef.value.getBoundingClientRect()
+  return { width: rect.width, height: rect.height }
 }
 
 function handleDragOver(event: DragEvent) {
@@ -373,7 +382,14 @@ function handleDrop(event: DragEvent) {
   const elementType = event.dataTransfer?.getData('elementType')
   if (!elementType) return
   
-  const position = getMousePosition(event)
+  let position = getMousePosition(event)
+  
+  const containerSize = getCanvasContainerSize()
+  position = diagramStore.clampPositionToViewport(
+    position,
+    { width: 140, height: 50 },
+    diagramStore.getViewportBounds(containerSize)
+  )
   
   switch (elementType) {
     case 'mindmap-node': {
@@ -622,6 +638,10 @@ function findNodeAtPosition(pos: Position): DiagramNode | null {
   }
   return null
 }
+
+defineExpose({
+  getContainerSize
+})
 </script>
 
 <style scoped>

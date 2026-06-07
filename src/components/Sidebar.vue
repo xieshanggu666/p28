@@ -109,6 +109,22 @@
     </div>
     
     <div class="sidebar-section">
+      <h4>视图控制</h4>
+      <button class="action-btn" @click="$emit('fit-view')">
+        <span>🔍</span> 适应视图
+      </button>
+      <button class="action-btn" @click="$emit('reset-view')">
+        <span>🔄</span> 重置视图
+      </button>
+      <button class="action-btn" @click="$emit('zoom-in')">
+        <span>➕</span> 放大
+      </button>
+      <button class="action-btn" @click="$emit('zoom-out')">
+        <span>➖</span> 缩小
+      </button>
+    </div>
+    
+    <div class="sidebar-section">
       <h4>其他</h4>
       <div 
         class="element-item" 
@@ -141,6 +157,10 @@ const emit = defineEmits<{
   (e: 'number-edges'): void
   (e: 'expand-all'): void
   (e: 'collapse-all'): void
+  (e: 'fit-view'): void
+  (e: 'reset-view'): void
+  (e: 'zoom-in'): void
+  (e: 'zoom-out'): void
 }>()
 
 function handleDragStart(event: DragEvent, type: string) {

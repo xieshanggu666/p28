@@ -415,13 +415,18 @@ export const useDiagramStore = defineStore('diagram', () => {
     currentDiagram.value.updatedAt = Date.now()
     autoSave()
     
+    setTimeout(() => {
+      ensureNodeVisible(childNode.id)
+    }, 50)
+    
     return childNode
   }
 
   function addTopicNode(
     text: string = '中心主题',
-    position: Position = { x: 400, y: 300 },
-    style?: Partial<NodeStyle>
+    position?: Position,
+    style?: Partial<NodeStyle>,
+    options?: { autoFit?: boolean }
   ): FlowchartNode | null {
     if (!currentDiagram.value) return null
 
@@ -432,12 +437,31 @@ export const useDiagramStore = defineStore('diagram', () => {
       ...style
     }
 
-    const topicNode = createFlowchartNode(text, position, 'topic', null, topicStyle)
+    let actualPosition = position
+    if (!actualPosition) {
+      if (nodes.value.length === 0) {
+        actualPosition = { x: 400, y: 300 }
+      } else {
+        actualPosition = getSmartPosition()
+      }
+    }
+
+    const topicNode = createFlowchartNode(text, actualPosition, 'topic', null, topicStyle)
     
     saveToHistory()
     currentDiagram.value.elements.push(topicNode)
     currentDiagram.value.updatedAt = Date.now()
     autoSave()
+    
+    if (options?.autoFit) {
+      setTimeout(() => {
+        fitView()
+      }, 50)
+    } else {
+      setTimeout(() => {
+        ensureNodeVisible(topicNode.id)
+      }, 50)
+    }
     
     return topicNode
   }
@@ -709,8 +733,21 @@ export const useDiagramStore = defineStore('diagram', () => {
     selection.value = { elementIds: [], type: null }
   }
 
-  function setZoom(zoom: number) {
-    canvasState.value.zoom = Math.max(0.1, Math.min(3, zoom))
+  function setZoom(zoom: number, center?: Position) {
+    const newZoom = Math.max(0.1, Math.min(3, zoom))
+    
+    if (center) {
+      const oldZoom = canvasState.value.zoom
+      const scaleChange = newZoom / oldZoom
+      const pan = canvasState.value.pan
+      
+      canvasState.value.pan = {
+        x: center.x - (center.x - pan.x) * scaleChange,
+        y: center.y - (center.y - pan.y) * scaleChange
+      }
+    }
+    
+    canvasState.value.zoom = newZoom
   }
 
   function setPan(pan: Position) {
@@ -719,6 +756,304 @@ export const useDiagramStore = defineStore('diagram', () => {
 
   function toggleGrid() {
     canvasState.value.gridVisible = !canvasState.value.gridVisible
+  }
+
+  function getNodesBounds(includeCollapsed: boolean = false) {
+    const targetNodes = includeCollapsed ? nodes.value : nodes.value.filter(n => {
+      if (!('collapsed' in n) || !n.parentId) return true
+      let parentId = n.parentId
+      while (parentId) {
+        const parent = nodes.value.find(p => p.id === parentId) as any
+        if (!parent) break
+        if (parent.collapsed) return false
+        parentId = parent.parentId
+      }
+      return true
+    })
+
+    if (targetNodes.length === 0) {
+      return { minX: 0, minY: 0, maxX: 1000, maxY: 800 }
+    }
+
+    let minX = Infinity
+    let minY = Infinity
+    let maxX = -Infinity
+    let maxY = -Infinity
+
+    targetNodes.forEach(node => {
+      minX = Math.min(minX, node.position.x)
+      minY = Math.min(minY, node.position.y)
+      maxX = Math.max(maxX, node.position.x + node.size.width)
+      maxY = Math.max(maxY, node.position.y + node.size.height)
+    })
+
+    return { minX, minY, maxX, maxY }
+  }
+
+  function fitView(options?: {
+    padding?: number
+    containerSize?: { width: number; height: number }
+    minZoom?: number
+    maxZoom?: number
+  }) {
+    if (nodes.value.length === 0) return
+
+    const {
+      padding = 80,
+      containerSize,
+      minZoom = 0.2,
+      maxZoom = 1.5
+    } = options || {}
+
+    const bounds = getNodesBounds()
+    const boundsWidth = bounds.maxX - bounds.minX
+    const boundsHeight = bounds.maxY - bounds.minY
+
+    let viewportWidth = 1200
+    let viewportHeight = 800
+
+    if (containerSize) {
+      viewportWidth = containerSize.width
+      viewportHeight = containerSize.height
+    } else if (typeof window !== 'undefined') {
+      viewportWidth = window.innerWidth - 300
+      viewportHeight = window.innerHeight - 60
+    }
+
+    const centerX = (bounds.minX + bounds.maxX) / 2
+    const centerY = (bounds.minY + bounds.maxY) / 2
+
+    const scaleX = (viewportWidth - padding * 2) / (boundsWidth || 1)
+    const scaleY = (viewportHeight - padding * 2) / (boundsHeight || 1)
+    const zoom = Math.max(minZoom, Math.min(maxZoom, Math.min(scaleX, scaleY)))
+
+    const panX = viewportWidth / 2 - centerX * zoom
+    const panY = viewportHeight / 2 - centerY * zoom
+
+    canvasState.value.zoom = zoom
+    canvasState.value.pan = { x: panX, y: panY }
+  }
+
+  function panToNode(nodeId: string, options?: {
+    containerSize?: { width: number; height: number }
+    animate?: boolean
+  }) {
+    const node = nodes.value.find(n => n.id === nodeId)
+    if (!node) return
+
+    let viewportWidth = 1200
+    let viewportHeight = 800
+
+    if (options?.containerSize) {
+      viewportWidth = options.containerSize.width
+      viewportHeight = options.containerSize.height
+    } else if (typeof window !== 'undefined') {
+      viewportWidth = window.innerWidth - 300
+      viewportHeight = window.innerHeight - 60
+    }
+
+    const zoom = canvasState.value.zoom
+    const nodeCenterX = node.position.x + node.size.width / 2
+    const nodeCenterY = node.position.y + node.size.height / 2
+
+    const panX = viewportWidth / 2 - nodeCenterX * zoom
+    const panY = viewportHeight / 2 - nodeCenterY * zoom
+
+    if (options?.animate) {
+      const startPan = { ...canvasState.value.pan }
+      const endPan = { x: panX, y: panY }
+      const duration = 300
+      const startTime = performance.now()
+
+      function animate(currentTime: number) {
+        const elapsed = currentTime - startTime
+        const progress = Math.min(elapsed / duration, 1)
+        const easeProgress = 1 - Math.pow(1 - progress, 3)
+
+        canvasState.value.pan = {
+          x: startPan.x + (endPan.x - startPan.x) * easeProgress,
+          y: startPan.y + (endPan.y - startPan.y) * easeProgress
+        }
+
+        if (progress < 1) {
+          requestAnimationFrame(animate)
+        }
+      }
+
+      requestAnimationFrame(animate)
+    } else {
+      canvasState.value.pan = { x: panX, y: panY }
+    }
+  }
+
+  function ensureNodeVisible(nodeId: string, options?: {
+    containerSize?: { width: number; height: number }
+    padding?: number
+    animate?: boolean
+  }) {
+    const node = nodes.value.find(n => n.id === nodeId)
+    if (!node) return
+
+    const { padding = 50, containerSize, animate = true } = options || {}
+
+    let viewportWidth = 1200
+    let viewportHeight = 800
+
+    if (containerSize) {
+      viewportWidth = containerSize.width
+      viewportHeight = containerSize.height
+    } else if (typeof window !== 'undefined') {
+      viewportWidth = window.innerWidth - 300
+      viewportHeight = window.innerHeight - 60
+    }
+
+    const zoom = canvasState.value.zoom
+    const pan = canvasState.value.pan
+
+    const nodeScreenX = node.position.x * zoom + pan.x
+    const nodeScreenY = node.position.y * zoom + pan.y
+    const nodeScreenRight = (node.position.x + node.size.width) * zoom + pan.x
+    const nodeScreenBottom = (node.position.y + node.size.height) * zoom + pan.y
+
+    const leftBound = padding
+    const topBound = padding
+    const rightBound = viewportWidth - padding
+    const bottomBound = viewportHeight - padding
+
+    let panX = pan.x
+    let panY = pan.y
+
+    if (nodeScreenX < leftBound) {
+      panX += leftBound - nodeScreenX
+    } else if (nodeScreenRight > rightBound) {
+      panX -= nodeScreenRight - rightBound
+    }
+
+    if (nodeScreenY < topBound) {
+      panY += topBound - nodeScreenY
+    } else if (nodeScreenBottom > bottomBound) {
+      panY -= nodeScreenBottom - bottomBound
+    }
+
+    if (panX !== pan.x || panY !== pan.y) {
+      if (animate) {
+        const startPan = { ...pan }
+        const endPan = { x: panX, y: panY }
+        const duration = 250
+        const startTime = performance.now()
+
+        function animate(currentTime: number) {
+          const elapsed = currentTime - startTime
+          const progress = Math.min(elapsed / duration, 1)
+          const easeProgress = 1 - Math.pow(1 - progress, 3)
+
+          canvasState.value.pan = {
+            x: startPan.x + (endPan.x - startPan.x) * easeProgress,
+            y: startPan.y + (endPan.y - startPan.y) * easeProgress
+          }
+
+          if (progress < 1) {
+            requestAnimationFrame(animate)
+          }
+        }
+
+        requestAnimationFrame(animate)
+      } else {
+        canvasState.value.pan = { x: panX, y: panY }
+      }
+    }
+  }
+
+  function getSmartPosition(
+    containerSize?: { width: number; height: number },
+    padding: number = 100
+  ): Position {
+    let viewportWidth = 1200
+    let viewportHeight = 800
+
+    if (containerSize) {
+      viewportWidth = containerSize.width
+      viewportHeight = containerSize.height
+    } else if (typeof window !== 'undefined') {
+      viewportWidth = window.innerWidth - 300
+      viewportHeight = window.innerHeight - 60
+    }
+
+    const zoom = canvasState.value.zoom
+    const pan = canvasState.value.pan
+
+    const worldLeft = -pan.x / zoom
+    const worldTop = -pan.y / zoom
+    const worldWidth = viewportWidth / zoom
+    const worldHeight = viewportHeight / zoom
+
+    const existingNodes = nodes.value.filter(n => {
+      return n.position.x >= worldLeft - 50 &&
+             n.position.x <= worldLeft + worldWidth + 50 &&
+             n.position.y >= worldTop - 50 &&
+             n.position.y <= worldTop + worldHeight + 50
+    })
+
+    const nodeWidth = 140
+    const nodeHeight = 50
+    const spacing = 30
+
+    let bestX = worldLeft + padding
+    let bestY = worldTop + padding
+    let found = false
+
+    const gridCols = Math.floor((worldWidth - padding * 2) / (nodeWidth + spacing))
+    const gridRows = Math.floor((worldHeight - padding * 2) / (nodeHeight + spacing))
+
+    for (let row = 0; row < Math.max(gridRows, 1) && !found; row++) {
+      for (let col = 0; col < Math.max(gridCols, 1) && !found; col++) {
+        const testX = worldLeft + padding + col * (nodeWidth + spacing)
+        const testY = worldTop + padding + row * (nodeHeight + spacing)
+
+        const hasOverlap = existingNodes.some(n => {
+          return testX < n.position.x + n.size.width + spacing &&
+                 testX + nodeWidth > n.position.x - spacing &&
+                 testY < n.position.y + n.size.height + spacing &&
+                 testY + nodeHeight > n.position.y - spacing
+        })
+
+        if (!hasOverlap) {
+          bestX = testX
+          bestY = testY
+          found = true
+        }
+      }
+    }
+
+    if (!found) {
+      const bounds = getNodesBounds()
+      bestX = bounds.maxX + 80
+      bestY = bounds.minY + 50
+    }
+
+    return { x: bestX, y: bestY }
+  }
+
+  function getInsertPositionAfterNode(
+    afterNodeId: string,
+    childSize: { width: number; height: number }
+  ): Position {
+    const afterNode = nodes.value.find(n => n.id === afterNodeId)
+    if (!afterNode) {
+      return getSmartPosition()
+    }
+
+    const position = {
+      x: afterNode.position.x,
+      y: afterNode.position.y + afterNode.size.height + layoutConfig.verticalSpacing
+    }
+
+    return position
+  }
+
+  function resetView() {
+    canvasState.value.zoom = 1
+    canvasState.value.pan = { x: 0, y: 0 }
   }
 
   function exportToJSON(): string {
@@ -835,6 +1170,13 @@ export const useDiagramStore = defineStore('diagram', () => {
     setZoom,
     setPan,
     toggleGrid,
+    getNodesBounds,
+    fitView,
+    panToNode,
+    ensureNodeVisible,
+    getSmartPosition,
+    getInsertPositionAfterNode,
+    resetView,
     undo,
     redo,
     exportToJSON,
