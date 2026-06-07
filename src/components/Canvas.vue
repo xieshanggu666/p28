@@ -207,16 +207,25 @@ const connectingEdge = computed(() => diagramStore.connectingEdge)
 const gridVisible = computed(() => canvasState.value.gridVisible)
 const gridSize = computed(() => canvasState.value.gridSize)
 
-const visibleNodes = computed(() => {
-  return nodes.value.filter(node => {
-    if ('collapsed' in node) {
-      if (node.parentId) {
-        const parent = nodes.value.find(n => n.id === node.parentId) as any
-        if (parent && parent.collapsed) return false
-      }
-    }
+function isNodeVisible(node: DiagramNode): boolean {
+  if (!('collapsed' in node) || !node.parentId) {
     return true
-  })
+  }
+  
+  let currentParentId = node.parentId
+  while (currentParentId) {
+    const parent = nodes.value.find(n => n.id === currentParentId) as any
+    if (!parent) break
+    if (parent.collapsed) {
+      return false
+    }
+    currentParentId = parent.parentId
+  }
+  return true
+}
+
+const visibleNodes = computed(() => {
+  return nodes.value.filter(node => isNodeVisible(node))
 })
 
 const svgStyle = computed(() => ({
@@ -364,10 +373,7 @@ function handleDrop(event: DragEvent) {
   const elementType = event.dataTransfer?.getData('elementType')
   if (!elementType) return
   
-  let position = getMousePosition(event)
-  
-  const tempNodeSize = { width: 140, height: 50 }
-  position = diagramStore.clampPositionToViewport(position, tempNodeSize)
+  const position = getMousePosition(event)
   
   switch (elementType) {
     case 'mindmap-node': {
@@ -578,32 +584,29 @@ function showNodeContextMenu(node: DiagramNode, event: MouseEvent) {
   }, 0)
 }
 
+function getCanvasViewportBounds() {
+  if (!canvasContainerRef.value) {
+    return diagramStore.getViewportBounds()
+  }
+  const rect = canvasContainerRef.value.getBoundingClientRect()
+  return diagramStore.getViewportBounds({
+    width: rect.width,
+    height: rect.height
+  })
+}
+
 function clampElementPosition(
   position: Position,
   element: DiagramNode | TextBoxType
 ): Position {
-  const bounds = diagramStore.getViewportBounds()
-  const margin = 30
   const elementWidth = 'size' in element ? element.size.width : 150
   const elementHeight = 'size' in element ? element.size.height : 30
-
-  let x = position.x
-  let y = position.y
-
-  if (x + elementWidth > bounds.maxX - margin) {
-    x = bounds.maxX - elementWidth - margin
-  }
-  if (x < bounds.minX + margin) {
-    x = bounds.minX + margin
-  }
-  if (y + elementHeight > bounds.maxY - margin) {
-    y = bounds.maxY - elementHeight - margin
-  }
-  if (y < bounds.minY + margin) {
-    y = bounds.minY + margin
-  }
-
-  return { x, y }
+  
+  return diagramStore.clampPositionToViewport(
+    position,
+    { width: elementWidth, height: elementHeight },
+    getCanvasViewportBounds()
+  )
 }
 
 function findNodeAtPosition(pos: Position): DiagramNode | null {

@@ -303,9 +303,11 @@ export const useDiagramStore = defineStore('diagram', () => {
       .map(id => nodes.value.find(n => n.id === id))
       .filter((n): n is DiagramNode => !!n)
 
-    let baseY = parent.position.y + parent.size.height / 2 - childSize.height / 2
+    let baseY: number
     
-    if (existingChildren.length > 0) {
+    if (existingChildren.length === 0) {
+      baseY = parent.position.y + parent.size.height / 2 - childSize.height / 2
+    } else {
       const sortedChildren = [...existingChildren].sort((a, b) => a.position.y - b.position.y)
       const lastChild = sortedChildren[sortedChildren.length - 1]
       baseY = lastChild.position.y + lastChild.size.height + layoutConfig.verticalSpacing
@@ -313,47 +315,61 @@ export const useDiagramStore = defineStore('diagram', () => {
 
     const baseX = parent.position.x + parent.size.width + layoutConfig.horizontalSpacing
 
-    const position = {
+    return {
       x: baseX,
       y: baseY
     }
-
-    return clampPositionToViewport(position, childSize)
   }
 
   function clampPositionToViewport(
     position: Position,
-    size: { width: number; height: number }
+    size: { width: number; height: number },
+    viewport?: { minX: number; minY: number; maxX: number; maxY: number }
   ): Position {
-    const viewport = getViewportBounds()
-    const margin = 50
+    const bounds = viewport || getViewportBounds()
+    const margin = 20
+    const safetyPadding = 500
+
+    const extendedBounds = {
+      minX: bounds.minX - safetyPadding,
+      minY: bounds.minY - safetyPadding,
+      maxX: bounds.maxX + safetyPadding,
+      maxY: bounds.maxY + safetyPadding
+    }
 
     let x = position.x
     let y = position.y
 
-    if (x + size.width > viewport.maxX - margin) {
-      x = viewport.maxX - size.width - margin
+    if (x + size.width > extendedBounds.maxX - margin) {
+      x = extendedBounds.maxX - size.width - margin
     }
-    if (x < viewport.minX + margin) {
-      x = viewport.minX + margin
+    if (x < extendedBounds.minX + margin) {
+      x = extendedBounds.minX + margin
     }
-    if (y + size.height > viewport.maxY - margin) {
-      y = viewport.maxY - size.height - margin
+    if (y + size.height > extendedBounds.maxY - margin) {
+      y = extendedBounds.maxY - size.height - margin
     }
-    if (y < viewport.minY + margin) {
-      y = viewport.minY + margin
+    if (y < extendedBounds.minY + margin) {
+      y = extendedBounds.minY + margin
     }
 
     return { x, y }
   }
 
-  function getViewportBounds() {
-    const canvasState = canvasState
+  function getViewportBounds(containerSize?: { width: number; height: number }) {
     const zoom = canvasState.value.zoom
     const pan = canvasState.value.pan
     
-    const viewportWidth = typeof window !== 'undefined' ? window.innerWidth : 1200
-    const viewportHeight = typeof window !== 'undefined' ? window.innerHeight : 800
+    let viewportWidth = 1200
+    let viewportHeight = 800
+    
+    if (containerSize) {
+      viewportWidth = containerSize.width
+      viewportHeight = containerSize.height
+    } else if (typeof window !== 'undefined') {
+      viewportWidth = window.innerWidth
+      viewportHeight = window.innerHeight
+    }
     
     const minX = -pan.x / zoom
     const minY = -pan.y / zoom
