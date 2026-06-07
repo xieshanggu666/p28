@@ -103,9 +103,39 @@ export const useDiagramStore = defineStore('diagram', () => {
     }
   }
 
+  function migrateDiagramData(diagram: Diagram): Diagram {
+    const migrated = JSON.parse(JSON.stringify(diagram)) as Diagram
+    
+    migrated.elements = migrated.elements.map(el => {
+      if (el.type === 'node') {
+        const node = el as any
+        if (!('parentId' in node)) node.parentId = null
+        if (!('children' in node)) node.children = []
+        if (!('level' in node)) node.level = 0
+        if (!('collapsed' in node)) node.collapsed = false
+        if (!('isRoot' in node)) node.isRoot = !node.parentId
+        if (!('nodeType' in node) && migrated.type === 'flowchart') {
+          node.nodeType = 'process'
+        }
+        return node as DiagramNode
+      }
+      if (el.type === 'edge') {
+        const edge = el as any
+        if (!('label' in edge)) edge.label = undefined
+        if (!('number' in edge)) edge.number = undefined
+        if (!('labelPosition' in edge)) edge.labelPosition = 'above'
+        if (!('pathType' in edge)) edge.pathType = 'bezier'
+        return edge as Edge
+      }
+      return el
+    })
+    
+    return migrated
+  }
+
   function loadDiagram(diagram: Diagram) {
     saveToHistory()
-    currentDiagram.value = JSON.parse(JSON.stringify(diagram))
+    currentDiagram.value = migrateDiagramData(diagram)
     clearSelection()
   }
 
@@ -1100,7 +1130,7 @@ export const useDiagramStore = defineStore('diagram', () => {
       if (data) {
         const diagram = JSON.parse(data) as Diagram
         if (validateDiagram(diagram)) {
-          return diagram
+          return migrateDiagramData(diagram)
         }
       }
     } catch (e) {
@@ -1110,19 +1140,24 @@ export const useDiagramStore = defineStore('diagram', () => {
   }
 
   function init() {
-    const saved = loadFromStorage()
-    if (saved) {
-      currentDiagram.value = saved
-    } else {
-      const newDiagram = createNewDiagram('mindmap', '我的思维导图')
-      const rootNode = createMindMapNode('中心主题', { x: 400, y: 300 })
-      rootNode.style.fillColor = '#e3f2fd'
-      rootNode.style.fontWeight = 'bold'
-      rootNode.style.fontSize = 18
-      newDiagram.elements.push(rootNode)
-      currentDiagram.value = newDiagram
-      autoSave()
+    try {
+      const saved = loadFromStorage()
+      if (saved) {
+        currentDiagram.value = saved
+        return
+      }
+    } catch (e) {
+      console.error('Failed to load saved diagram, creating new one:', e)
     }
+    
+    const newDiagram = createNewDiagram('mindmap', '我的思维导图')
+    const rootNode = createMindMapNode('中心主题', { x: 400, y: 300 })
+    rootNode.style.fillColor = '#e3f2fd'
+    rootNode.style.fontWeight = 'bold'
+    rootNode.style.fontSize = 18
+    newDiagram.elements.push(rootNode)
+    currentDiagram.value = newDiagram
+    autoSave()
   }
 
   return {
