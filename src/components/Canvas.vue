@@ -117,12 +117,13 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, nextTick, onMounted } from 'vue'
+import { ref, computed, nextTick, onMounted, onUnmounted } from 'vue'
 import { useDiagramStore } from '@/stores/diagramStore'
 import type { DiagramNode, TextBox as TextBoxType, Position } from '@/types'
 import NodeComponent from './NodeComponent.vue'
 import EdgeComponent from './EdgeComponent.vue'
 import TextBoxComponent from './TextBoxComponent.vue'
+import { rafThrottle } from '@/utils/performance'
 
 const diagramStore = useDiagramStore()
 
@@ -134,6 +135,8 @@ const isDraggingElement = ref(false)
 const dragStartPos = ref<Position>({ x: 0, y: 0 })
 const elementStartPos = ref<Position>({ x: 0, y: 0 })
 const draggingElement = ref<DiagramNode | TextBoxType | null>(null)
+const lastDragPosition = ref<Position>({ x: 0, y: 0 })
+const hasDragged = ref(false)
 
 const editingElement = ref<DiagramNode | TextBoxType | null>(null)
 const editText = ref('')
@@ -183,9 +186,7 @@ const editingSize = computed(() => {
   return { width: 150, height: 30 }
 })
 
-onMounted(() => {
-  window.addEventListener('keydown', handleKeydown)
-})
+
 
 function isSelected(id: string): boolean {
   return selection.value.elementIds.includes(id)
@@ -216,6 +217,10 @@ function handleMouseDown(event: MouseEvent) {
     y: event.clientY - canvasState.value.pan.y
   }
 }
+
+const throttledUpdatePosition = rafThrottle((elementId: string, newPosition: Position) => {
+  diagramStore.updateElementSilent(elementId, { position: newPosition })
+})
 
 function handleMouseMove(event: MouseEvent) {
   if (connectingEdge.value) {
@@ -249,7 +254,11 @@ function handleMouseMove(event: MouseEvent) {
       y: Math.round((elementStartPos.value.y + dy) / gridSize.value) * gridSize.value
     }
     
-    diagramStore.updateElement(draggingElement.value.id, { position: newPosition })
+    if (newPosition.x !== lastDragPosition.value.x || newPosition.y !== lastDragPosition.value.y) {
+      hasDragged.value = true
+      lastDragPosition.value = newPosition
+      throttledUpdatePosition(draggingElement.value.id, newPosition)
+    }
   }
 }
 
@@ -264,9 +273,19 @@ function handleMouseUp(event: MouseEvent) {
     diagramStore.connectingEdge = null
   }
   
+  if (isDraggingElement.value && draggingElement.value && hasDragged.value) {
+    diagramStore.updateElement(draggingElement.value.id, { 
+      position: { ...lastDragPosition.value } 
+    }, true)
+  }
+  
   isDraggingCanvas.value = false
   isDraggingElement.value = false
   draggingElement.value = null
+  hasDragged.value = false
+  lastDragPosition.value = { x: 0, y: 0 }
+  elementStartPos.value = { x: 0, y: 0 }
+  dragStartPos.value = { x: 0, y: 0 }
 }
 
 function handleWheel(event: WheelEvent) {
@@ -359,11 +378,20 @@ function selectTextBox(id: string, event: MouseEvent) {
 
 function startDrag(element: DiagramNode | TextBoxType, event: MouseEvent) {
   event.stopPropagation()
+  event.preventDefault()
+  
+  if (editingElement.value) {
+    finishEdit()
+    return
+  }
+  
   isDraggingElement.value = true
   draggingElement.value = element
+  hasDragged.value = false
   const mousePos = getMousePosition(event)
   dragStartPos.value = mousePos
   elementStartPos.value = { ...element.position }
+  lastDragPosition.value = { ...element.position }
   
   if (!isSelected(element.id)) {
     diagramStore.selectElement(element.id, element.type === 'textbox' ? 'textbox' : 'node')
@@ -415,14 +443,6 @@ function findNodeAtPosition(pos: Position): DiagramNode | null {
     }
   }
   return null
-}
-
-function handleKeydown(e: KeyboardEvent) {
-  if ((e.key === 'Delete' || e.key === 'Backspace') && selection.value.elementIds.length > 0) {
-    if (document.activeElement?.tagName !== 'INPUT' && document.activeElement?.tagName !== 'TEXTAREA') {
-      diagramStore.deleteElements(selection.value.elementIds)
-    }
-  }
 }
 </script>
 

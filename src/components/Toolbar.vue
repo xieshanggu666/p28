@@ -183,6 +183,9 @@ function importJSON(event: Event) {
 }
 
 function handleKeydown(e: KeyboardEvent) {
+  const activeTag = document.activeElement?.tagName
+  const isEditing = activeTag === 'INPUT' || activeTag === 'TEXTAREA' || activeTag === 'SELECT'
+  
   if (e.ctrlKey || e.metaKey) {
     switch (e.key) {
       case 'z':
@@ -202,21 +205,14 @@ function handleKeydown(e: KeyboardEvent) {
         e.preventDefault()
         zoomOut()
         break
-      case 'Delete':
-      case 'Backspace':
-        if (diagramStore.selection.elementIds.length > 0) {
-          e.preventDefault()
-          diagramStore.deleteElements(diagramStore.selection.elementIds)
-        }
-        break
     }
   }
-  if (e.key === 'Delete' || e.key === 'Backspace') {
-    if (document.activeElement?.tagName !== 'INPUT' && document.activeElement?.tagName !== 'TEXTAREA') {
-      if (diagramStore.selection.elementIds.length > 0) {
-        e.preventDefault()
-        diagramStore.deleteElements(diagramStore.selection.elementIds)
-      }
+  
+  if ((e.key === 'Delete' || e.key === 'Backspace') && !isEditing) {
+    if (diagramStore.selection.elementIds.length > 0) {
+      e.preventDefault()
+      e.stopPropagation()
+      diagramStore.deleteElements(diagramStore.selection.elementIds)
     }
   }
 }

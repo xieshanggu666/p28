@@ -3,6 +3,9 @@
     class="textbox"
     :class="{ selected }"
     :transform="`translate(${textBox.position.x}, ${textBox.position.y})`"
+    @click.stop="$emit('select', $event)"
+    @mousedown.stop="$emit('mousedown', $event)"
+    @dblclick.stop="$emit('dblclick')"
   >
     <rect
       :width="150"

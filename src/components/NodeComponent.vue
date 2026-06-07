@@ -3,6 +3,9 @@
     class="node"
     :class="{ selected }"
     :transform="`translate(${node.position.x}, ${node.position.y})`"
+    @click.stop="$emit('select', $event)"
+    @mousedown.stop="$emit('mousedown', $event)"
+    @dblclick.stop="$emit('dblclick')"
   >
     <rect
       v-if="shape === 'rectangle' || shape === 'rounded-rectangle'"

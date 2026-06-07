@@ -277,22 +277,30 @@ export const useDiagramStore = defineStore('diagram', () => {
     autoSave()
   }
 
-  function updateElement(id: string, updates: Partial<DiagramElement>) {
+  function updateElement(id: string, updates: Partial<DiagramElement>, saveHistory: boolean = true) {
     if (!currentDiagram.value) return
-    saveToHistory()
+    if (saveHistory) saveToHistory()
     const element = currentDiagram.value.elements.find(el => el.id === id)
     if (element) {
       Object.assign(element, updates)
-      element.style = { ...element.style, ...updates.style }
+      if (updates.style) {
+        element.style = { ...element.style, ...updates.style }
+      }
       
-      if (element.type === 'node' && element.text) {
+      if (element.type === 'node' && element.text && updates.text) {
         element.size = calculateTextSize(element.text, element.style as NodeStyle)
       }
       
-      updateConnectedEdges(id)
+      if (updates.position) {
+        updateConnectedEdges(id)
+      }
     }
     currentDiagram.value.updatedAt = Date.now()
-    autoSave()
+    if (saveHistory) autoSave()
+  }
+
+  function updateElementSilent(id: string, updates: Partial<DiagramElement>) {
+    updateElement(id, updates, false)
   }
 
   function updateConnectedEdges(nodeId: string) {
@@ -469,6 +477,7 @@ export const useDiagramStore = defineStore('diagram', () => {
     createTextBox,
     addTextBox,
     updateElement,
+    updateElementSilent,
     deleteElements,
     selectElement,
     clearSelection,
